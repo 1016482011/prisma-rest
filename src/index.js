@@ -1,11 +1,13 @@
 const express = require('express')
 const bodyParser = require('body-parser')
+const fs = require('fs')
 const { prisma } = require('./prisma-client')
 const Jwt = require('./jwt')
 const jwt = new Jwt()
 
 const app = express()
 
+app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 
 async function verifyToken(token) {
@@ -79,16 +81,49 @@ app.post('/api/queryOrder', async (req, res) => {
 })
 
 app.post('/api/webAddBalance', async (req, res) => {
+  const query = `
+  query {
+    webAddBalances{
+      id,
+      Amount,
+      Createtime,
+      User{realname}
+    }
+  }
+  `
   try {
     await verifyToken(req.headers.authorization)
-    const result = await prisma.webAddBalances()
+    const result = await prisma.$graphql(query)
     res.json({
       code: 0,
       msg: '查询成功',
-      data: { webAddBalance: result }
+      data: result
     })
   } catch (e) {
     res.json({ code: 1, msg: e })
+  }
+})
+
+app.post('/file/list', (req, res) => {
+  fs.readdir(`./file/${req.body.name}`, function(err, files) {
+    if (err) {
+      res.json({ code: 1, data: err, message: '查询失败' })
+    }
+    res.json({ code: 0, data: files, message: '查询成功' })
+  })
+})
+app.get('/file/download', (req, res) => {
+  const filePath = `./file/${req.query.name}/${req.query.file}`
+  const stats = fs.statSync(filePath)
+  if (stats.isFile()) {
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': 'attachment; filename=' + req.query.file,
+      'Content-Length': stats.size
+    })
+    fs.createReadStream(filePath).pipe(res)
+  } else {
+    res.end(404)
   }
 })
 
